@@ -345,7 +345,7 @@ var App = (function () {
     return (
       '<section class="column">' +
       '<div class="col-head">' +
-      "<div><div class=\"col-title\">" +
+      '<div><div class="col-title">' +
       esc(dept.name) +
       '</div><div class="col-heads">' +
       (admin
@@ -407,9 +407,11 @@ var App = (function () {
     }
 
     var shown = board.departments.filter(function (d) {
-      return depts.some(function (x) {
-        return x.id === d.id;
-      }) || locked[d.id];
+      return (
+        depts.some(function (x) {
+          return x.id === d.id;
+        }) || locked[d.id]
+      );
     });
 
     var pills = shown
@@ -433,7 +435,9 @@ var App = (function () {
     modal =
       '<div class="backdrop" data-action="close-modal">' +
       '<form class="modal" data-action="save-staff">' +
-      (person ? '<input type="hidden" name="staff_id" value="' + person.id + '">' : "") +
+      (person
+        ? '<input type="hidden" name="staff_id" value="' + person.id + '">'
+        : "") +
       "<h2>" +
       (person ? "Edit Staff" : "Register Staff") +
       "</h2>" +
@@ -474,11 +478,11 @@ var App = (function () {
           })
           .map(function (s) {
             return (
-              "<label><input type=\"checkbox\" name=\"head-" +
+              '<label><input type="checkbox" name="head-' +
               dept.id +
-              "\" value=\"" +
+              '" value="' +
               s.id +
-              "\"" +
+              '"' +
               (selected[s.id] ? " checked" : "") +
               "> " +
               esc(s.name) +
@@ -488,7 +492,9 @@ var App = (function () {
           .join("");
         return (
           '<div class="head-block"' +
-          (focusDeptId === dept.id ? ' style="outline:2px solid var(--accent)"' : "") +
+          (focusDeptId === dept.id
+            ? ' style="outline:2px solid var(--accent)"'
+            : "") +
           "><h3>" +
           esc(dept.name) +
           '</h3><div class="head-list">' +
@@ -563,7 +569,7 @@ var App = (function () {
       '">' +
       "<h2>Tasks</h2>" +
       '<div class="task-edit-list">' +
-      (rows || "<p class=\"empty-tasks\">No tasks</p>") +
+      (rows || '<p class="empty-tasks">No tasks</p>') +
       "</div>" +
       '<div class="field"><input name="title" autocomplete="off" placeholder="New task"></div>' +
       '<div class="modal-actions">' +
@@ -614,9 +620,14 @@ var App = (function () {
     }
 
     if (action === "discord") {
-      renderLogin({ step: "choose" });
+      if (Api.USE_REMOTE) {
+        window.location.href = Config.API_BASE + "/api/auth/discord/login";
+      } else {
+        renderLogin({ step: "choose" });
+      }
       return;
     }
+
     if (action === "choose") {
       renderLogin({ step: "choose" });
       return;
@@ -637,9 +648,10 @@ var App = (function () {
       return;
     }
     if (action === "logout") {
-      Auth.logout();
-      modal = null;
-      render();
+      Auth.logout().then(function () {
+        modal = null;
+        render();
+      });
       return;
     }
     if (action === "close-modal") {
@@ -652,7 +664,8 @@ var App = (function () {
       return;
     }
     if (action === "menu") {
-      var key = t.getAttribute("data-staff") + "-" + t.getAttribute("data-dept");
+      var key =
+        t.getAttribute("data-staff") + "-" + t.getAttribute("data-dept");
       openMenu = openMenu === key ? null : key;
       renderBoard();
       return;
@@ -678,7 +691,10 @@ var App = (function () {
       return;
     }
     if (action === "toggle-task") {
-      Api.toggleTask(Number(t.getAttribute("data-staff")), Number(t.getAttribute("data-task")))
+      Api.toggleTask(
+        Number(t.getAttribute("data-staff")),
+        Number(t.getAttribute("data-task")),
+      )
         .then(function () {
           return Api.getBoard();
         })
@@ -689,7 +705,10 @@ var App = (function () {
       return;
     }
     if (action === "delete-task") {
-      Api.removeTask(Number(t.getAttribute("data-staff")), Number(t.getAttribute("data-task")))
+      Api.removeTask(
+        Number(t.getAttribute("data-staff")),
+        Number(t.getAttribute("data-task")),
+      )
         .then(function () {
           return Api.getBoard();
         })
@@ -711,13 +730,15 @@ var App = (function () {
     if (action === "remove") {
       var staffId = Number(t.getAttribute("data-staff"));
       var deptId = Number(t.getAttribute("data-dept"));
-      Api.removeFromDepartment(staffId, deptId).then(function () {
-        return Api.getBoard();
-      }).then(function (data) {
-        board = data;
-        toast("Removed");
-        renderBoard();
-      });
+      Api.removeFromDepartment(staffId, deptId)
+        .then(function () {
+          return Api.getBoard();
+        })
+        .then(function (data) {
+          board = data;
+          toast("Removed");
+          renderBoard();
+        });
     }
   }
 
@@ -743,7 +764,10 @@ var App = (function () {
       }
       var me = user();
       var illegal = deptIds.some(function (id) {
-        return !Auth.canAddTo(board, me, id) && !(staffId && staffDeptIds(staffId).indexOf(id) !== -1);
+        return (
+          !Auth.canAddTo(board, me, id) &&
+          !(staffId && staffDeptIds(staffId).indexOf(id) !== -1)
+        );
       });
       if (illegal) {
         toast("Not your department");
@@ -754,13 +778,13 @@ var App = (function () {
             discord_id: form.discord_id.value,
             name: form.name.value,
             department_ids: deptIds,
-            tags: parseTags(form.tags ? form.tags.value : "")
+            tags: parseTags(form.tags ? form.tags.value : ""),
           })
         : Api.upsertStaff({
             discord_id: form.discord_id.value,
             name: form.name.value,
             department_ids: deptIds,
-            tags: parseTags(form.tags ? form.tags.value : "")
+            tags: parseTags(form.tags ? form.tags.value : ""),
           });
       job
         .then(function () {
@@ -814,7 +838,9 @@ var App = (function () {
       e.preventDefault();
       if (!Auth.canManageHeads(user())) return;
       var jobs = board.departments.map(function (dept) {
-        var boxes = form.querySelectorAll('input[name="head-' + dept.id + '"]:checked');
+        var boxes = form.querySelectorAll(
+          'input[name="head-' + dept.id + '"]:checked',
+        );
         var ids = [];
         boxes.forEach(function (box) {
           ids.push(Number(box.value));
@@ -844,6 +870,17 @@ var App = (function () {
     document.addEventListener("click", onClick);
     document.addEventListener("submit", onSubmit);
     document.addEventListener("keydown", onKey);
+    Auth.checkSession()
+      .then(function () {
+        return Api.getBoard();
+      })
+      .then(function (data) {
+        board = data;
+        render();
+      })
+      .catch(function () {
+        render(); // Renders login if unauthorized or error
+      });
     Api.getBoard().then(function (data) {
       board = data;
       render();

@@ -1,7 +1,8 @@
 var Auth = (function () {
   var KEY = "staffpanelicious:session";
-
-  function session() {
+  var currentUser = null
+  
+  function sessionFromLocalStorage() {
     try {
       var raw = localStorage.getItem(KEY);
       return raw ? JSON.parse(raw) : null;
@@ -9,13 +10,52 @@ var Auth = (function () {
       return null;
     }
   }
+  
+  function checkSession() {
+    if (Api.USE_REMOTE) {
+      return fetch(Config.API_BASE + "/api/auth/me", { credentials: "include" })
+        .then(function (res) {
+          if (!res.ok) throw new Error("Unauthorized");
+          return res.json();
+        })
+        .then(function (user) {
+          currentUser = user;
+          console.log(currentUser)
+          return user;
+        })
+        .catch(function () {
+          currentUser = null;
+          return null;
+        });
+    }
 
+    // Local / Mock Mode
+    currentUser = sessionFromLocalStorage();
+    return Promise.resolve(currentUser);
+  }
+
+  function session() {
+    return currentUser;
+  }
+
+  // Local-only mock login functions stay unchanged
   function setSession(user) {
+    currentUser = user;
     localStorage.setItem(KEY, JSON.stringify(user));
   }
 
   function logout() {
+    currentUser = null;
+    if (Api.USE_REMOTE) {
+      return fetch(Config.API_BASE + "/api/auth/logout", {
+        method: "POST",
+        credentials: "include"
+      });
+    }
+
+    // Local Mode
     localStorage.removeItem(KEY);
+    return Promise.resolve({ ok: true });
   }
 
   function loginWithDiscordId(discordId, name, board) {
@@ -38,7 +78,7 @@ var Auth = (function () {
     setSession({
       discord_id: Config.DEMO_ADMIN.discord_id,
       name: Config.DEMO_ADMIN.name,
-      role: "admin"
+      role: "admin",
     });
     return { ok: true };
   }
@@ -48,7 +88,7 @@ var Auth = (function () {
     setSession({
       discord_id: person.discord_id,
       name: person.name,
-      role: "staff"
+      role: "staff",
     });
     return { ok: true };
   }
@@ -108,16 +148,18 @@ var Auth = (function () {
   }
 
   return {
+    checkSession: checkSession,
     session: session,
     logout: logout,
     loginWithDiscordId: loginWithDiscordId,
     loginAdmin: loginAdmin,
     loginHead: loginHead,
+    logout: logout,
     headedDepartmentIds: headedDepartmentIds,
     isBoardMember: isBoardMember,
     canViewBoard: canViewBoard,
     canAddTo: canAddTo,
     canManageHeads: canManageHeads,
-    canRemoveFrom: canRemoveFrom
+    canRemoveFrom: canRemoveFrom,
   };
 })();

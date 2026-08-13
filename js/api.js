@@ -1,5 +1,5 @@
 var Api = (function () {
-  var USE_REMOTE = false;
+  var USE_REMOTE = true;
 
   function db() {
     return Storage.load();
@@ -9,23 +9,30 @@ var Api = (function () {
     Storage.save(data);
   }
 
+  function http(endpoint, options) {
+    options = options || {};
+    options.credentials = "include";
+
+    return fetch(Config.API_BASE + endpoint, options).then(function (r) {
+      if (!r.ok) throw new Error("API Request Failed");
+      return r.json();
+    });
+  }
+
+
   function getBoard() {
     if (USE_REMOTE) {
-      return fetch(Config.API_BASE + "/api/board").then(function (r) {
-        return r.json();
-      });
+      return http("/api/board");
     }
     return Promise.resolve(db());
   }
 
   function upsertStaff(payload) {
     if (USE_REMOTE) {
-      return fetch(Config.API_BASE + "/api/staff", {
+      return http("/api/staff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      }).then(function (r) {
-        return r.json();
+        body: JSON.stringify(payload),
       });
     }
 
@@ -46,7 +53,7 @@ var Api = (function () {
         status: "active",
         tags: [],
         notes: "",
-        tasks: []
+        tasks: [],
       };
       data.staff.push(person);
     } else {
@@ -69,12 +76,10 @@ var Api = (function () {
 
   function updateStaff(staffId, payload) {
     if (USE_REMOTE) {
-      return fetch(Config.API_BASE + "/api/staff/" + staffId, {
+      return http("/api/staff/" + staffId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      }).then(function (r) {
-        return r.json();
+        body: JSON.stringify(payload),
       });
     }
 
@@ -116,12 +121,10 @@ var Api = (function () {
 
   function patchStaff(staffId, fields) {
     if (USE_REMOTE) {
-      return fetch(Config.API_BASE + "/api/staff/" + staffId, {
+      return http("/api/staff/" + staffId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields)
-      }).then(function (r) {
-        return r.json();
+        body: JSON.stringify(fields),
       });
     }
 
@@ -148,7 +151,7 @@ var Api = (function () {
     person.tasks.push({
       id: data.nextTaskId++,
       title: String(title).trim(),
-      done: false
+      done: false,
     });
     persist(data);
     return Promise.resolve(person);
@@ -182,11 +185,8 @@ var Api = (function () {
 
   function removeFromDepartment(staffId, departmentId) {
     if (USE_REMOTE) {
-      return fetch(
-        Config.API_BASE + "/api/staff/" + staffId + "/departments/" + departmentId,
-        { method: "DELETE" }
-      ).then(function () {
-        return true;
+      return http("/api/staff/" + staffId + "/departments/" + departmentId, {
+        method: "DELETE",
       });
     }
 
@@ -200,12 +200,10 @@ var Api = (function () {
 
   function setHeads(departmentId, staffIds) {
     if (USE_REMOTE) {
-      return fetch(Config.API_BASE + "/api/departments/" + departmentId + "/heads", {
+      return http("/api/departments/" + departmentId + "/heads", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staff_ids: staffIds })
-      }).then(function (r) {
-        return r.json();
+        body: JSON.stringify({ staff_ids: staffIds }),
       });
     }
 
@@ -230,6 +228,6 @@ var Api = (function () {
     toggleTask: toggleTask,
     removeTask: removeTask,
     removeFromDepartment: removeFromDepartment,
-    setHeads: setHeads
+    setHeads: setHeads,
   };
 })();

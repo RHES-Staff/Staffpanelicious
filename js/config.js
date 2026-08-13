@@ -13,11 +13,11 @@ var Config = {
 
   DEMO_ADMIN: {
     discord_id: "100000000000000001",
-    name: "Admin"
+    name: "Admin",
   },
 
   DEMO_EMPLOYEE: {
     discord_id: "1244953844451119157",
-    name: "isaac"
-  }
+    name: "isaac",
+  },
 };
