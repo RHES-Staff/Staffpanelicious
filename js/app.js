@@ -5,6 +5,7 @@ var App = (function () {
   var toastTimer = null;
   var openMenu = null;
   var expandedTasks = {};
+  var collapsedDepts = {};
 
   function $(sel, el) {
     return (el || document).querySelector(sel);
@@ -227,6 +228,7 @@ var App = (function () {
     var canAdd = Auth.canAddTo(board, me, dept.key);
     var canRemove = Auth.canRemoveFrom(board, me, dept.key);
     var admin = Auth.canManageHeads(me);
+    var collapsed = !!collapsedDepts[dept.key];
 
     var cards = members
       .map(function (person) {
@@ -335,8 +337,10 @@ var App = (function () {
       : "";
 
     return (
-      '<section class="column">' +
-      '<div class="col-head">' +
+      '<section class="column' + (collapsed ? " collapsed" : "") + '">' +
+      '<div class="col-head" data-action="toggle-column" data-dept="' +
+      dept.key +
+      '">' +
       '<div><div class="col-title">' +
       esc(dept.name) +
       '</div><div class="col-heads">' +
@@ -350,7 +354,11 @@ var App = (function () {
       "</div></div>" +
       '<span class="count">' +
       members.length +
-      "</span></div>" +
+      "</span>" +
+      '<span class="col-toggle">' +
+      (collapsed ? "⌄" : "⌃") +
+      "</span>" +
+      "</div>" +
       (members.length ? "" : addBtn) +
       '<div class="cards">' +
       cards +
@@ -709,6 +717,12 @@ var App = (function () {
           board = data;
           openTasks(Number(t.getAttribute("data-staff")));
         });
+      return;
+    }
+    if (action === "toggle-column") {
+      var deptKey = t.getAttribute("data-dept");
+      collapsedDepts[deptKey] = !collapsedDepts[deptKey];
+      renderBoard();
       return;
     }
     if (action === "delete-task") {
