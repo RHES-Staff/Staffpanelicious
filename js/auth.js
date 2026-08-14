@@ -1,7 +1,7 @@
 var Auth = (function () {
   var KEY = "staffpanelicious:session";
   var currentUser = null
-  
+
   function sessionFromLocalStorage() {
     try {
       var raw = localStorage.getItem(KEY);
@@ -10,7 +10,7 @@ var Auth = (function () {
       return null;
     }
   }
-  
+
   function checkSession() {
     if (Api.USE_REMOTE) {
       return fetch(Config.API_BASE + "/api/auth/me", { credentials: "include" })
@@ -20,7 +20,6 @@ var Auth = (function () {
         })
         .then(function (user) {
           currentUser = user;
-          console.log(currentUser)
           return user;
         })
         .catch(function () {
@@ -105,12 +104,12 @@ var Auth = (function () {
   function headedDepartmentIds(board, user) {
     var person = personFor(board, user);
     if (!person) return [];
-    return board.heads
-      .filter(function (h) {
-        return h.staff_id === person.id;
+    return board.departments
+      .filter(function (d) {
+        return d.head === person.staff_id;
       })
-      .map(function (h) {
-        return h.department_id;
+      .map(function (d) {
+        return d.key;
       });
   }
 
@@ -118,11 +117,15 @@ var Auth = (function () {
     var person = personFor(board, user);
     if (!person) return false;
     var dept = board.departments.find(function (d) {
-      return d.slug === "board-of-directors";
+      return d.key === "board-of-directors";
     });
     if (!dept) return false;
     return board.memberships.some(function (m) {
-      return m.staff_id === person.id && m.department_id === dept.id;
+      return (
+        m.staff_id === person.staff_id &&
+        m.department_key === dept.key &&
+        m.is_active !== false
+      );
     });
   }
 
@@ -133,18 +136,18 @@ var Auth = (function () {
     return isBoardMember(board, user);
   }
 
-  function canAddTo(board, user, departmentId) {
+  function canAddTo(board, user, departmentKey) {
     if (!user) return false;
     if (user.role === "admin") return true;
-    return headedDepartmentIds(board, user).indexOf(departmentId) !== -1;
+    return headedDepartmentIds(board, user).indexOf(departmentKey) !== -1;
   }
 
   function canManageHeads(user) {
     return !!(user && user.role === "admin");
   }
 
-  function canRemoveFrom(board, user, departmentId) {
-    return canAddTo(board, user, departmentId);
+  function canRemoveFrom(board, user, departmentKey) {
+    return canAddTo(board, user, departmentKey);
   }
 
   return {
@@ -154,7 +157,6 @@ var Auth = (function () {
     loginWithDiscordId: loginWithDiscordId,
     loginAdmin: loginAdmin,
     loginHead: loginHead,
-    logout: logout,
     headedDepartmentIds: headedDepartmentIds,
     isBoardMember: isBoardMember,
     canViewBoard: canViewBoard,

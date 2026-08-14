@@ -19,12 +19,66 @@ var Api = (function () {
     });
   }
 
+  function findStaff(data, staffId) {
+    return data.staff.find(function (s) {
+      return s.staff_id === staffId;
+    });
+  }
+
+  function tagsFor(data, staffId) {
+    return data.staffTags
+      .filter(function (t) {
+        return t.staff_id === staffId;
+      })
+      .map(function (t) {
+        var tag = data.assetTags.find(function (a) {
+          return a.id === t.tag_id;
+        });
+        return tag ? tag.name : null;
+      })
+      .filter(Boolean);
+  }
+
+  function setTags(data, staffId, tagNames) {
+    data.staffTags = data.staffTags.filter(function (t) {
+      return t.staff_id !== staffId;
+    });
+    (tagNames || []).forEach(function (name) {
+      var tag = data.assetTags.find(function (a) {
+        return a.name === name;
+      });
+      if (!tag) {
+        tag = { id: data.nextTagId++, name: name, color: "#94a3b8" };
+        data.assetTags.push(tag);
+      }
+      data.staffTags.push({
+        id: (data.nextStaffTagId = (data.nextStaffTagId || 1) + 1) - 1,
+        staff_id: staffId,
+        tag_id: tag.id,
+        tagged_by: null,
+      });
+    });
+  }
+
+  function decorate(data, person) {
+    if (!person) return person;
+    person.tags = tagsFor(data, person.staff_id);
+    person.notesList = data.notes.filter(function (n) {
+      return n.staff_id === person.staff_id;
+    });
+    if (!person.tasks) person.tasks = [];
+    return person;
+  }
 
   function getBoard() {
     if (USE_REMOTE) {
       return http("/api/board");
     }
-    return Promise.resolve(db());
+    var data = db();
+    data.staff.forEach(function (p) {
+      decorate(data, p);
+    });
+    return Promise.resolve(data);
   }
 
   function upsertStaff(payload) {
@@ -39,7 +93,7 @@ var Api = (function () {
     var data = db();
     var discordId = String(payload.discord_id).trim();
     var name = String(payload.name).trim();
-    var deptIds = payload.department_ids || [];
+    var deptKeys = payload.department_keys || [];
 
     var person = data.staff.find(function (s) {
       return s.discord_id === discordId;
@@ -47,31 +101,37 @@ var Api = (function () {
 
     if (!person) {
       person = {
-        id: data.nextStaffId++,
+        staff_id: data.nextStaffId++,
         discord_id: discordId,
         name: name,
-        status: "active",
-        tags: [],
-        notes: "",
+        title: null,
+        timezone: null,
+        schedule: {},
+        is_active: true,
+        is_blacklisted: false,
         tasks: [],
       };
       data.staff.push(person);
     } else {
       person.name = name;
     }
-    if (payload.tags) person.tags = payload.tags;
+    if (payload.tags) setTags(data, person.staff_id, payload.tags);
 
-    deptIds.forEach(function (deptId) {
+    deptKeys.forEach(function (deptKey) {
       var exists = data.memberships.some(function (m) {
-        return m.staff_id === person.id && m.department_id === deptId;
+        return m.staff_id === person.staff_id && m.department_key === deptKey;
       });
       if (!exists) {
-        data.memberships.push({ staff_id: person.id, department_id: deptId });
+        data.memberships.push({
+          staff_id: person.staff_id,
+          department_key: deptKey,
+          is_active: true,
+        });
       }
     });
 
     persist(data);
-    return Promise.resolve(person);
+    return Promise.resolve(decorate(data, person));
   }
 
   function updateStaff(staffId, payload) {
@@ -84,39 +144,41 @@ var Api = (function () {
     }
 
     var data = db();
-    var person = data.staff.find(function (s) {
-      return s.id === staffId;
-    });
+    var person = findStaff(data, staffId);
     if (!person) return Promise.reject(new Error("missing"));
 
     var discordId = String(payload.discord_id).trim();
     var taken = data.staff.some(function (s) {
-      return s.id !== staffId && s.discord_id === discordId;
+      return s.staff_id !== staffId && s.discord_id === discordId;
     });
     if (taken) return Promise.reject(new Error("id taken"));
 
     person.discord_id = discordId;
     person.name = String(payload.name).trim();
-    if (payload.tags) person.tags = payload.tags;
+    if (payload.tags) setTags(data, staffId, payload.tags);
 
     var keep = {};
-    (payload.department_ids || []).forEach(function (id) {
-      keep[id] = true;
+    (payload.department_keys || []).forEach(function (key) {
+      keep[key] = true;
     });
     data.memberships = data.memberships.filter(function (m) {
-      return m.staff_id !== staffId || keep[m.department_id];
+      return m.staff_id !== staffId || keep[m.department_key];
     });
-    (payload.department_ids || []).forEach(function (deptId) {
+    (payload.department_keys || []).forEach(function (deptKey) {
       var exists = data.memberships.some(function (m) {
-        return m.staff_id === staffId && m.department_id === deptId;
+        return m.staff_id === staffId && m.department_key === deptKey;
       });
       if (!exists) {
-        data.memberships.push({ staff_id: staffId, department_id: deptId });
+        data.memberships.push({
+          staff_id: staffId,
+          department_key: deptKey,
+          is_active: true,
+        });
       }
     });
 
     persist(data);
-    return Promise.resolve(person);
+    return Promise.resolve(decorate(data, person));
   }
 
   function patchStaff(staffId, fields) {
@@ -129,22 +191,29 @@ var Api = (function () {
     }
 
     var data = db();
-    var person = data.staff.find(function (s) {
-      return s.id === staffId;
-    });
+    var person = findStaff(data, staffId);
     if (!person) return Promise.reject(new Error("missing"));
-    if (fields.notes != null) person.notes = String(fields.notes);
-    if (fields.tags) person.tags = fields.tags;
+    if (fields.note != null && String(fields.note).trim()) {
+      data.notes.push({
+        id: data.nextNoteId++,
+        staff_id: staffId,
+        author_id: fields.author_id || null,
+        text: String(fields.note),
+        created_at: new Date().toISOString(),
+      });
+    }
+    if (fields.tags) setTags(data, staffId, fields.tags);
     if (fields.tasks) person.tasks = fields.tasks;
+    if (fields.is_active != null) person.is_active = !!fields.is_active;
+    if (fields.is_blacklisted != null)
+      person.is_blacklisted = !!fields.is_blacklisted;
     persist(data);
-    return Promise.resolve(person);
+    return Promise.resolve(decorate(data, person));
   }
 
   function addTask(staffId, title) {
     var data = db();
-    var person = data.staff.find(function (s) {
-      return s.id === staffId;
-    });
+    var person = findStaff(data, staffId);
     if (!person) return Promise.reject(new Error("missing"));
     if (!person.tasks) person.tasks = [];
     if (!data.nextTaskId) data.nextTaskId = 1;
@@ -154,66 +223,63 @@ var Api = (function () {
       done: false,
     });
     persist(data);
-    return Promise.resolve(person);
+    return Promise.resolve(decorate(data, person));
   }
 
   function toggleTask(staffId, taskId) {
     var data = db();
-    var person = data.staff.find(function (s) {
-      return s.id === staffId;
-    });
+    var person = findStaff(data, staffId);
     if (!person || !person.tasks) return Promise.reject(new Error("missing"));
     person.tasks.forEach(function (task) {
       if (task.id === taskId) task.done = !task.done;
     });
     persist(data);
-    return Promise.resolve(person);
+    return Promise.resolve(decorate(data, person));
   }
 
   function removeTask(staffId, taskId) {
     var data = db();
-    var person = data.staff.find(function (s) {
-      return s.id === staffId;
-    });
+    var person = findStaff(data, staffId);
     if (!person || !person.tasks) return Promise.reject(new Error("missing"));
     person.tasks = person.tasks.filter(function (task) {
       return task.id !== taskId;
     });
     persist(data);
-    return Promise.resolve(person);
+    return Promise.resolve(decorate(data, person));
   }
 
-  function removeFromDepartment(staffId, departmentId) {
+  function removeFromDepartment(staffId, departmentKey) {
     if (USE_REMOTE) {
-      return http("/api/staff/" + staffId + "/departments/" + departmentId, {
+      return http("/api/staff/" + staffId + "/departments/" + departmentKey, {
         method: "DELETE",
       });
     }
 
     var data = db();
     data.memberships = data.memberships.filter(function (m) {
-      return !(m.staff_id === staffId && m.department_id === departmentId);
+      return !(m.staff_id === staffId && m.department_key === departmentKey);
     });
     persist(data);
     return Promise.resolve(true);
   }
 
-  function setHeads(departmentId, staffIds) {
+  function setHeads(departmentKey, staffIds) {
+    var headId = Array.isArray(staffIds) ? staffIds[0] || null : staffIds;
+
     if (USE_REMOTE) {
-      return http("/api/departments/" + departmentId + "/heads", {
+      return http("/api/departments/" + departmentKey + "/head", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staff_ids: staffIds }),
+        body: JSON.stringify({ staff_id: headId }),
       });
     }
 
     var data = db();
-    data.heads = data.heads.filter(function (h) {
-      return h.department_id !== departmentId;
+    var dept = data.departments.find(function (d) {
+      return d.key === departmentKey;
     });
-    staffIds.forEach(function (staffId) {
-      data.heads.push({ department_id: departmentId, staff_id: staffId });
-    });
+    if (!dept) return Promise.reject(new Error("missing"));
+    dept.head = headId;
     persist(data);
     return Promise.resolve(true);
   }

@@ -66,7 +66,6 @@ var App = (function () {
   function renderLogin(opts) {
     opts = opts || {};
     var step = opts.step || "discord";
-    var err = opts.error || "";
     var inner;
 
     if (step === "discord") {
@@ -87,11 +86,11 @@ var App = (function () {
           .map(function (person) {
             return (
               '<button class="ghost" type="button" data-action="pick-head" data-staff="' +
-              person.id +
+              person.staff_id +
               '">' +
               esc(person.name) +
               "<small>" +
-              esc(headDeptsLabel(person.id)) +
+              esc(headDeptsLabel(person.staff_id)) +
               "</small></button>"
             );
           })
@@ -116,11 +115,11 @@ var App = (function () {
   function uniqueHeads() {
     var seen = {};
     var list = [];
-    board.heads.forEach(function (h) {
-      if (seen[h.staff_id]) return;
-      var person = staffById(h.staff_id);
+    board.departments.forEach(function (d) {
+      if (!d.head || seen[d.head]) return;
+      var person = staffById(d.head);
       if (!person) return;
-      seen[h.staff_id] = true;
+      seen[d.head] = true;
       list.push(person);
     });
     return list.sort(function (a, b) {
@@ -129,17 +128,13 @@ var App = (function () {
   }
 
   function headDeptsLabel(staffId) {
-    return board.heads
-      .filter(function (h) {
-        return h.staff_id === staffId;
+    return board.departments
+      .filter(function (d) {
+        return d.head === staffId;
       })
-      .map(function (h) {
-        var dept = board.departments.find(function (d) {
-          return d.id === h.department_id;
-        });
-        return dept ? dept.name : "";
+      .map(function (d) {
+        return d.name;
       })
-      .filter(Boolean)
       .join(", ");
   }
 
@@ -160,25 +155,23 @@ var App = (function () {
 
   function staffById(id) {
     return board.staff.find(function (s) {
-      return s.id === id;
+      return s.staff_id === id;
     });
   }
 
-  function headsFor(deptId) {
-    return board.heads
-      .filter(function (h) {
-        return h.department_id === deptId;
-      })
-      .map(function (h) {
-        return staffById(h.staff_id);
-      })
-      .filter(Boolean);
+  function headsFor(deptKey) {
+    var dept = board.departments.find(function (d) {
+      return d.key === deptKey;
+    });
+    if (!dept || !dept.head) return [];
+    var person = staffById(dept.head);
+    return person ? [person] : [];
   }
 
-  function membersFor(deptId) {
+  function membersFor(deptKey) {
     return board.memberships
       .filter(function (m) {
-        return m.department_id === deptId;
+        return m.department_key === deptKey && m.is_active !== false;
       })
       .map(function (m) {
         return staffById(m.staff_id);
@@ -186,8 +179,8 @@ var App = (function () {
       .filter(Boolean);
   }
 
-  function headLabel(deptId) {
-    var names = headsFor(deptId).map(function (s) {
+  function headLabel(deptKey) {
+    var names = headsFor(deptKey).map(function (s) {
       return s.name;
     });
     if (!names.length) return "Head: -";
@@ -196,13 +189,7 @@ var App = (function () {
 
   function renderBoard() {
     var me = user();
-    var cols = board.departments
-      .slice()
-      .sort(function (a, b) {
-        return a.sort_order - b.sort_order;
-      })
-      .map(renderColumn)
-      .join("");
+    var cols = board.departments.map(renderColumn).join("");
 
     root.innerHTML =
       '<div class="board-page">' +
@@ -236,14 +223,14 @@ var App = (function () {
 
   function renderColumn(dept) {
     var me = user();
-    var members = membersFor(dept.id);
-    var canAdd = Auth.canAddTo(board, me, dept.id);
-    var canRemove = Auth.canRemoveFrom(board, me, dept.id);
+    var members = membersFor(dept.key);
+    var canAdd = Auth.canAddTo(board, me, dept.key);
+    var canRemove = Auth.canRemoveFrom(board, me, dept.key);
     var admin = Auth.canManageHeads(me);
 
     var cards = members
       .map(function (person) {
-        var menuKey = person.id + "-" + dept.id;
+        var menuKey = person.staff_id + "-" + dept.key;
         var tags = person.tags || [];
         var tasks = person.tasks || [];
         var done = tasks.filter(function (task) {
@@ -260,11 +247,11 @@ var App = (function () {
           : "";
         var taskHtml = "";
         if (tasks.length) {
-          var open = !!expandedTasks[person.id];
+          var open = !!expandedTasks[person.staff_id];
           taskHtml =
             '<div class="task-bar">' +
             '<button class="task-bar-head" type="button" data-action="toggle-tasks" data-staff="' +
-            person.id +
+            person.staff_id +
             '"><span>Tasks ' +
             done +
             " / " +
@@ -289,32 +276,37 @@ var App = (function () {
               : "") +
             "</div>";
         }
+        var statusLabel = person.is_blacklisted
+          ? "Blacklisted"
+          : person.is_active
+            ? "Active"
+            : "Inactive";
         return (
           '<article class="card">' +
           (canRemove
             ? '<div class="card-menu-wrap">' +
               '<button class="kebab" type="button" data-action="menu" data-staff="' +
-              person.id +
+              person.staff_id +
               '" data-dept="' +
-              dept.id +
+              dept.key +
               '">' +
               kebabIcon() +
               "</button>" +
               (openMenu === menuKey
                 ? '<div class="card-menu">' +
                   '<button type="button" data-action="edit" data-staff="' +
-                  person.id +
+                  person.staff_id +
                   '">Edit</button>' +
                   '<button type="button" data-action="open-tasks" data-staff="' +
-                  person.id +
+                  person.staff_id +
                   '">Tasks</button>' +
                   '<button type="button" data-action="open-notes" data-staff="' +
-                  person.id +
+                  person.staff_id +
                   '">Notes</button>' +
                   '<button type="button" data-action="remove" data-staff="' +
-                  person.id +
+                  person.staff_id +
                   '" data-dept="' +
-                  dept.id +
+                  dept.key +
                   '">Remove</button>' +
                   "</div>"
                 : "") +
@@ -328,7 +320,7 @@ var App = (function () {
           esc(person.discord_id) +
           "</div>" +
           '<span class="badge">' +
-          (person.status === "active" ? "Active" : esc(person.status)) +
+          esc(statusLabel) +
           "</span>" +
           taskHtml +
           "</article>"
@@ -338,7 +330,7 @@ var App = (function () {
 
     var addBtn = canAdd
       ? '<button class="add-slot" type="button" data-action="add" data-dept="' +
-        dept.id +
+        dept.key +
         '">add</button>'
       : "";
 
@@ -350,11 +342,11 @@ var App = (function () {
       '</div><div class="col-heads">' +
       (admin
         ? '<button type="button" data-action="heads" data-dept="' +
-          dept.id +
+          dept.key +
           '">' +
-          esc(headLabel(dept.id)) +
+          esc(headLabel(dept.key)) +
           "</button>"
-        : esc(headLabel(dept.id))) +
+        : esc(headLabel(dept.key))) +
       "</div></div>" +
       '<span class="count">' +
       members.length +
@@ -368,61 +360,63 @@ var App = (function () {
     );
   }
 
-  function allowedDepartments(presetDeptId) {
+  function allowedDepartments(presetDeptKey) {
     var me = user();
     if (me.role === "admin") return board.departments.slice();
-    var ids = Auth.headedDepartmentIds(board, me);
+    var keys = Auth.headedDepartmentIds(board, me);
     return board.departments.filter(function (d) {
-      if (presetDeptId && ids.indexOf(presetDeptId) !== -1) {
-        return d.id === presetDeptId || ids.indexOf(d.id) !== -1;
+      if (presetDeptKey && keys.indexOf(presetDeptKey) !== -1) {
+        return d.key === presetDeptKey || keys.indexOf(d.key) !== -1;
       }
-      return ids.indexOf(d.id) !== -1;
+      return keys.indexOf(d.key) !== -1;
     });
   }
 
-  function staffDeptIds(staffId) {
+  function staffDeptKeys(staffId) {
     return board.memberships
       .filter(function (m) {
         return m.staff_id === staffId;
       })
       .map(function (m) {
-        return m.department_id;
+        return m.department_key;
       });
   }
 
-  function openRegister(deptId) {
-    openStaffForm({ deptId: deptId });
+  function openRegister(deptKey) {
+    openStaffForm({ deptKey: deptKey });
   }
 
   function openStaffForm(opts) {
     var person = opts.person || null;
-    var deptId = opts.deptId || null;
-    var current = person ? staffDeptIds(person.id) : [];
-    var depts = allowedDepartments(deptId);
+    var deptKey = opts.deptKey || null;
+    var current = person ? staffDeptKeys(person.staff_id) : [];
+    var depts = allowedDepartments(deptKey);
     var locked = {};
     if (person) {
-      current.forEach(function (id) {
-        if (!Auth.canAddTo(board, user(), id)) locked[id] = true;
+      current.forEach(function (key) {
+        if (!Auth.canAddTo(board, user(), key)) locked[key] = true;
       });
     }
 
     var shown = board.departments.filter(function (d) {
       return (
         depts.some(function (x) {
-          return x.id === d.id;
-        }) || locked[d.id]
+          return x.key === d.key;
+        }) || locked[d.key]
       );
     });
 
     var pills = shown
       .map(function (d) {
-        var selected = person ? current.indexOf(d.id) !== -1 : d.id === deptId;
-        var isLocked = !!locked[d.id];
+        var selected = person
+          ? current.indexOf(d.key) !== -1
+          : d.key === deptKey;
+        var isLocked = !!locked[d.key];
         return (
           '<button type="button" class="pill' +
           (selected ? " on" : "") +
           '" data-action="pill" data-dept="' +
-          d.id +
+          d.key +
           '"' +
           (isLocked ? " disabled" : "") +
           ">" +
@@ -436,7 +430,9 @@ var App = (function () {
       '<div class="backdrop" data-action="close-modal">' +
       '<form class="modal" data-action="save-staff">' +
       (person
-        ? '<input type="hidden" name="staff_id" value="' + person.id + '">'
+        ? '<input type="hidden" name="staff_id" value="' +
+          person.staff_id +
+          '">'
         : "") +
       "<h2>" +
       (person ? "Edit Staff" : "Register Staff") +
@@ -464,41 +460,43 @@ var App = (function () {
     renderBoard();
   }
 
-  function openHeads(focusDeptId) {
+  function openHeads(focusDeptKey) {
     var blocks = board.departments
       .map(function (dept) {
-        var selected = {};
-        headsFor(dept.id).forEach(function (s) {
-          selected[s.id] = true;
-        });
-        var checks = membersFor(dept.id)
+        var options = membersFor(dept.key)
           .slice()
           .sort(function (a, b) {
             return a.name.localeCompare(b.name);
           })
           .map(function (s) {
             return (
-              '<label><input type="checkbox" name="head-' +
-              dept.id +
+              '<label><input type="radio" name="head-' +
+              dept.key +
               '" value="' +
-              s.id +
+              s.staff_id +
               '"' +
-              (selected[s.id] ? " checked" : "") +
+              (dept.head === s.staff_id ? " checked" : "") +
               "> " +
               esc(s.name) +
               "</label>"
             );
           })
           .join("");
+        var noneChecked = !dept.head ? " checked" : "";
         return (
           '<div class="head-block"' +
-          (focusDeptId === dept.id
+          (focusDeptKey === dept.key
             ? ' style="outline:2px solid var(--accent)"'
             : "") +
           "><h3>" +
           esc(dept.name) +
           '</h3><div class="head-list">' +
-          checks +
+          '<label><input type="radio" name="head-' +
+          dept.key +
+          '" value=""' +
+          noneChecked +
+          "> None</label>" +
+          options +
           "</div></div>"
         );
       })
@@ -519,19 +517,28 @@ var App = (function () {
   function openNotes(staffId) {
     var person = staffById(staffId);
     if (!person) return;
+    var notes = (person.notesList || []).slice().sort(function (a, b) {
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    var rows = notes
+      .map(function (n) {
+        return '<div class="note-row"><p>' + esc(n.text) + "</p></div>";
+      })
+      .join("");
     modal =
       '<div class="backdrop" data-action="close-modal">' +
       '<form class="modal" data-action="save-notes">' +
       '<input type="hidden" name="staff_id" value="' +
-      person.id +
+      person.staff_id +
       '">' +
       "<h2>Notes</h2>" +
-      '<div class="field"><textarea name="notes" rows="7">' +
-      esc(person.notes || "") +
-      "</textarea></div>" +
+      '<div class="notes-list">' +
+      (rows || '<p class="empty-notes">No notes yet</p>') +
+      "</div>" +
+      '<div class="field"><textarea name="note" rows="4" placeholder="Add a note"></textarea></div>' +
       '<div class="modal-actions">' +
-      '<button class="ghost" type="button" data-action="close-modal">Cancel</button>' +
-      '<button class="solid" type="submit">Save</button>' +
+      '<button class="ghost" type="button" data-action="close-modal">Close</button>' +
+      '<button class="solid" type="submit">Add</button>' +
       "</div></form></div>";
     renderBoard();
   }
@@ -545,7 +552,7 @@ var App = (function () {
         return (
           '<div class="task-edit-row">' +
           '<label><input type="checkbox" data-action="toggle-task" data-staff="' +
-          person.id +
+          person.staff_id +
           '" data-task="' +
           task.id +
           '"' +
@@ -554,7 +561,7 @@ var App = (function () {
           esc(task.title) +
           "</label>" +
           '<button class="ghost" type="button" data-action="delete-task" data-staff="' +
-          person.id +
+          person.staff_id +
           '" data-task="' +
           task.id +
           '">×</button></div>'
@@ -565,7 +572,7 @@ var App = (function () {
       '<div class="backdrop" data-action="close-modal">' +
       '<form class="modal" data-action="add-task">' +
       '<input type="hidden" name="staff_id" value="' +
-      person.id +
+      person.staff_id +
       '">' +
       "<h2>Tasks</h2>" +
       '<div class="task-edit-list">' +
@@ -594,11 +601,11 @@ var App = (function () {
   }
 
   function selectedPills(form) {
-    var ids = [];
+    var keys = [];
     form.querySelectorAll(".pill.on").forEach(function (btn) {
-      ids.push(Number(btn.getAttribute("data-dept")));
+      keys.push(btn.getAttribute("data-dept"));
     });
-    return ids;
+    return keys;
   }
 
   function onClick(e) {
@@ -660,7 +667,7 @@ var App = (function () {
       return;
     }
     if (action === "add") {
-      openRegister(Number(t.getAttribute("data-dept")));
+      openRegister(t.getAttribute("data-dept"));
       return;
     }
     if (action === "menu") {
@@ -719,8 +726,7 @@ var App = (function () {
       return;
     }
     if (action === "heads") {
-      var dept = t.getAttribute("data-dept");
-      openHeads(dept ? Number(dept) : null);
+      openHeads(t.getAttribute("data-dept"));
       return;
     }
     if (action === "pill") {
@@ -729,8 +735,8 @@ var App = (function () {
     }
     if (action === "remove") {
       var staffId = Number(t.getAttribute("data-staff"));
-      var deptId = Number(t.getAttribute("data-dept"));
-      Api.removeFromDepartment(staffId, deptId)
+      var deptKey = t.getAttribute("data-dept");
+      Api.removeFromDepartment(staffId, deptKey)
         .then(function () {
           return Api.getBoard();
         })
@@ -749,24 +755,27 @@ var App = (function () {
 
     if (action === "save-staff") {
       e.preventDefault();
-      var deptIds = selectedPills(form);
+      var deptKeys = selectedPills(form);
       var staffId = form.staff_id ? Number(form.staff_id.value) : 0;
       if (staffId) {
-        staffDeptIds(staffId).forEach(function (id) {
-          if (!Auth.canAddTo(board, user(), id) && deptIds.indexOf(id) === -1) {
-            deptIds.push(id);
+        staffDeptKeys(staffId).forEach(function (key) {
+          if (
+            !Auth.canAddTo(board, user(), key) &&
+            deptKeys.indexOf(key) === -1
+          ) {
+            deptKeys.push(key);
           }
         });
       }
-      if (!deptIds.length) {
+      if (!deptKeys.length) {
         toast("Pick a department");
         return;
       }
       var me = user();
-      var illegal = deptIds.some(function (id) {
+      var illegal = deptKeys.some(function (key) {
         return (
-          !Auth.canAddTo(board, me, id) &&
-          !(staffId && staffDeptIds(staffId).indexOf(id) !== -1)
+          !Auth.canAddTo(board, me, key) &&
+          !(staffId && staffDeptKeys(staffId).indexOf(key) !== -1)
         );
       });
       if (illegal) {
@@ -777,13 +786,13 @@ var App = (function () {
         ? Api.updateStaff(staffId, {
             discord_id: form.discord_id.value,
             name: form.name.value,
-            department_ids: deptIds,
+            department_keys: deptKeys,
             tags: parseTags(form.tags ? form.tags.value : ""),
           })
         : Api.upsertStaff({
             discord_id: form.discord_id.value,
             name: form.name.value,
-            department_ids: deptIds,
+            department_keys: deptKeys,
             tags: parseTags(form.tags ? form.tags.value : ""),
           });
       job
@@ -804,7 +813,12 @@ var App = (function () {
 
     if (action === "save-notes") {
       e.preventDefault();
-      Api.patchStaff(Number(form.staff_id.value), { notes: form.notes.value })
+      var noteText = form.note.value.trim();
+      if (!noteText) {
+        closeModal();
+        return;
+      }
+      Api.patchStaff(Number(form.staff_id.value), { note: noteText })
         .then(function () {
           return Api.getBoard();
         })
@@ -838,14 +852,11 @@ var App = (function () {
       e.preventDefault();
       if (!Auth.canManageHeads(user())) return;
       var jobs = board.departments.map(function (dept) {
-        var boxes = form.querySelectorAll(
-          'input[name="head-' + dept.id + '"]:checked',
+        var picked = form.querySelector(
+          'input[name="head-' + dept.key + '"]:checked',
         );
-        var ids = [];
-        boxes.forEach(function (box) {
-          ids.push(Number(box.value));
-        });
-        return Api.setHeads(dept.id, ids);
+        var staffId = picked && picked.value ? Number(picked.value) : null;
+        return Api.setHeads(dept.key, staffId ? [staffId] : []);
       });
       Promise.all(jobs)
         .then(function () {
