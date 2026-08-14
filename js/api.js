@@ -137,7 +137,7 @@ var Api = (function () {
   function updateStaff(staffId, payload) {
     if (USE_REMOTE) {
       return http("/api/staff/" + staffId, {
-        method: "PATCH",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -181,37 +181,41 @@ var Api = (function () {
     return Promise.resolve(decorate(data, person));
   }
 
-  function patchStaff(staffId, fields) {
+  function addNote(staffId, text) {
     if (USE_REMOTE) {
-      return http("/api/staff/" + staffId, {
-        method: "PATCH",
+      return http("/api/staff/" + staffId + "/note", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
+        body: JSON.stringify({ note: text }),
       });
     }
 
     var data = db();
     var person = findStaff(data, staffId);
     if (!person) return Promise.reject(new Error("missing"));
-    if (fields.note != null && String(fields.note).trim()) {
+    var trimmed = String(text || "").trim();
+    if (trimmed) {
       data.notes.push({
         id: data.nextNoteId++,
         staff_id: staffId,
-        author_id: fields.author_id || null,
-        text: String(fields.note),
+        author_id: null,
+        text: trimmed,
         created_at: new Date().toISOString(),
       });
     }
-    if (fields.tags) setTags(data, staffId, fields.tags);
-    if (fields.tasks) person.tasks = fields.tasks;
-    if (fields.is_active != null) person.is_active = !!fields.is_active;
-    if (fields.is_blacklisted != null)
-      person.is_blacklisted = !!fields.is_blacklisted;
     persist(data);
     return Promise.resolve(decorate(data, person));
   }
 
   function addTask(staffId, title) {
+    if (USE_REMOTE) {
+      return http("/api/staff/" + staffId + "/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title }),
+      });
+    }
+
     var data = db();
     var person = findStaff(data, staffId);
     if (!person) return Promise.reject(new Error("missing"));
@@ -289,7 +293,7 @@ var Api = (function () {
     getBoard: getBoard,
     upsertStaff: upsertStaff,
     updateStaff: updateStaff,
-    patchStaff: patchStaff,
+    addNote: addNote,
     addTask: addTask,
     toggleTask: toggleTask,
     removeTask: removeTask,

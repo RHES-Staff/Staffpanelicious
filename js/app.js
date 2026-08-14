@@ -116,7 +116,7 @@ var App = (function () {
     var seen = {};
     var list = [];
     board.departments.forEach(function (d) {
-      if (!d.head || seen[d.head]) return;
+      if (d.head == null || seen[d.head]) return;
       var person = staffById(d.head);
       if (!person) return;
       seen[d.head] = true;
@@ -163,7 +163,7 @@ var App = (function () {
     var dept = board.departments.find(function (d) {
       return d.key === deptKey;
     });
-    if (!dept || !dept.head) return [];
+    if (!dept || dept.head == null) return [];
     var person = staffById(dept.head);
     return person ? [person] : [];
   }
@@ -482,7 +482,7 @@ var App = (function () {
             );
           })
           .join("");
-        var noneChecked = !dept.head ? " checked" : "";
+        var noneChecked = dept.head == null ? " checked" : "";
         return (
           '<div class="head-block"' +
           (focusDeptKey === dept.key
@@ -756,8 +756,8 @@ var App = (function () {
     if (action === "save-staff") {
       e.preventDefault();
       var deptKeys = selectedPills(form);
-      var staffId = form.staff_id ? Number(form.staff_id.value) : 0;
-      if (staffId) {
+      var staffId = form.staff_id ? Number(form.staff_id.value) : null;
+      if (staffId != null) {
         staffDeptKeys(staffId).forEach(function (key) {
           if (
             !Auth.canAddTo(board, user(), key) &&
@@ -775,14 +775,14 @@ var App = (function () {
       var illegal = deptKeys.some(function (key) {
         return (
           !Auth.canAddTo(board, me, key) &&
-          !(staffId && staffDeptKeys(staffId).indexOf(key) !== -1)
+          !(staffId != null && staffDeptKeys(staffId).indexOf(key) !== -1)
         );
       });
       if (illegal) {
         toast("Not your department");
         return;
       }
-      var job = staffId
+      var job = staffId != null
         ? Api.updateStaff(staffId, {
             discord_id: form.discord_id.value,
             name: form.name.value,
@@ -818,7 +818,7 @@ var App = (function () {
         closeModal();
         return;
       }
-      Api.patchStaff(Number(form.staff_id.value), { note: noteText })
+      Api.addNote(Number(form.staff_id.value), noteText)
         .then(function () {
           return Api.getBoard();
         })
@@ -856,7 +856,7 @@ var App = (function () {
           'input[name="head-' + dept.key + '"]:checked',
         );
         var staffId = picked && picked.value ? Number(picked.value) : null;
-        return Api.setHeads(dept.key, staffId ? [staffId] : []);
+        return Api.setHeads(dept.key, staffId != null ? [staffId] : []);
       });
       Promise.all(jobs)
         .then(function () {
