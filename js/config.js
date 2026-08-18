@@ -2,7 +2,7 @@ var Config = {
   title: "Staffpanelicious",
   org: "Hydroelectric Simulation",
 
-  API_BASE: "",
+  API_BASE: "https://staffpanelicious.bonnybonnybonaktan.xyz",
 
   DISCORD_CLIENT_ID: "",
   DISCORD_REDIRECT_URI: "",
