@@ -299,5 +299,6 @@ var Api = (function () {
     removeTask: removeTask,
     removeFromDepartment: removeFromDepartment,
     setHeads: setHeads,
+    http: http
   };
 })();

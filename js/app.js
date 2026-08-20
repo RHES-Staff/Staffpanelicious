@@ -906,10 +906,10 @@ var App = (function () {
       .catch(function () {
         render(); // Renders login if unauthorized or error
       });
-    Api.getBoard().then(function (data) {
-      board = data;
-      render();
-    });
+    // Api.getBoard().then(function (data) {
+    //   board = data;
+    //   render();
+    // });
   }
 
   return { init: init };

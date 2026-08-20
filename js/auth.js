@@ -13,14 +13,10 @@ var Auth = (function () {
 
   function checkSession() {
     if (Api.USE_REMOTE) {
-      return fetch(Config.API_BASE + "/api/auth/me", { credentials: "include" })
+      return Api.http("/api/auth/me", { credentials: "include" })
         .then(function (res) {
-          if (!res.ok) throw new Error("Unauthorized");
-          return res.json();
-        })
-        .then(function (user) {
-          currentUser = user;
-          return user;
+          currentUser = res;
+          return res;
         })
         .catch(function () {
           currentUser = null;
@@ -46,7 +42,7 @@ var Auth = (function () {
   function logout() {
     currentUser = null;
     if (Api.USE_REMOTE) {
-      return fetch(Config.API_BASE + "/api/auth/logout", {
+      return Api.http("/api/auth/logout", {
         method: "POST",
         credentials: "include"
       });
